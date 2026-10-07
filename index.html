@@ -5,9 +5,9 @@
 <link rel="manifest" href="manifest.json"><meta name="theme-color" content="#0f3d2e">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
-:root{--ink:#0f3d2e;--gold:#e8b32a;--paper:#f4f6f2;--card:#fff;--red:#c8372d;--ok:#1f8a4c;--mut:#5d6b65;--ln:#d9dfda}
-@media(prefers-color-scheme:dark){:root{--paper:#0e1a16;--card:#16251f;--ln:#2a3d35;--mut:#9bb0a7;--ink:#d8efe3}body{color:#e8f2ec}}
-*{box-sizing:border-box}body{margin:0;font:15px/1.5 Sora,system-ui,sans-serif;background:var(--paper);color:#1b2a24;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+:root{--txt:#1b2a24;--ink:#0f3d2e;--gold:#e8b32a;--paper:#f4f6f2;--card:#fff;--red:#c8372d;--ok:#1f8a4c;--mut:#5d6b65;--ln:#d9dfda}
+@media(prefers-color-scheme:dark){:root{--paper:#0e1a16;--card:#16251f;--ln:#2a3d35;--mut:#9bb0a7;--ink:#d8efe3;--txt:#e8f2ec}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 Sora,system-ui,sans-serif;background:var(--paper);color:var(--txt);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 header{background:#0f3d2e;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid var(--gold)}
 .hr{display:flex;align-items:center;gap:10px}.logo{width:52px;height:52px;border-radius:50%;background:#fff;padding:3px;object-fit:contain}
 header b{font-size:14px;letter-spacing:.2px}header small{display:block;opacity:.7;font-weight:400;font-size:11px}
@@ -33,7 +33,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:7px 6px;b
 .msg{padding:10px;border-radius:10px;margin-top:10px;font-size:13px;background:#fff3d6;color:#5a4300}.msg.bad{background:#fde3e0;color:#7a1b13}.msg.good{background:#dff3e6;color:#12532d}
 .hide{display:none}.tbl{overflow-x:auto}@media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body>
-<header><div><b>Ghana TVET Service</b><small>Central Regional Directorate · Attendance · v1.6</small></div><div class="hr"><button id="lo" class="alt hide" style="width:auto;margin:0;padding:6px 12px;color:#fff;border-color:#ffffff55">Log out</button><img class="logo" src="logo.png" alt="Ghana TVET Service logo"></div></header>
+<header><div><b>Ghana TVET Service</b><small>Central Regional Directorate · Attendance · v1.7</small></div><div class="hr"><button id="lo" class="alt hide" style="width:auto;margin:0;padding:6px 12px;color:#fff;border-color:#ffffff55">Log out</button><img class="logo" src="logo.png" alt="Ghana TVET Service logo"></div></header>
 <main>
 <!-- AUTH -->
 <section id="auth" class="card">

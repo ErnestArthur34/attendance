@@ -19,7 +19,7 @@ input,select,textarea{background:#12362b!important;color:#fff!important;-webkit-
 input::placeholder{color:#b9d3c8!important;-webkit-text-fill-color:#b9d3c8}
 select option{background:#12362b;color:#fff}
 input:-webkit-autofill{-webkit-box-shadow:0 0 0 40px #12362b inset!important;-webkit-text-fill-color:#fff!important}
-input[type=date]::-webkit-calendar-picker-indicator{filter:invert(1)}
+input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-calendar-picker-indicator{filter:invert(1)}
 button{cursor:pointer;border:0;background:#1f8a4c;color:#fff;font-weight:600;margin-top:12px}button.alt{background:#e8b32a;color:#0f3d2e;border:0}
 header button.alt{background:transparent;color:#fff;border:1px solid #ffffff88}
 button:disabled{opacity:.4;cursor:not-allowed}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--gold)}
@@ -33,7 +33,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:7px 6px;b
 .msg{padding:10px;border-radius:10px;margin-top:10px;font-size:13px;background:#fff3d6;color:#5a4300}.msg.bad{background:#fde3e0;color:#7a1b13}.msg.good{background:#dff3e6;color:#12532d}
 .hide{display:none}.tbl{overflow-x:auto}@media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body>
-<header><div><b>Ghana TVET Service</b><small>Central Regional Directorate · Attendance · v1.3</small></div><div class="hr"><button id="lo" class="alt hide" style="width:auto;margin:0;padding:6px 12px;color:#fff;border-color:#ffffff55">Log out</button><img class="logo" src="logo.png" alt="Ghana TVET Service logo"></div></header>
+<header><div><b>Ghana TVET Service</b><small>Central Regional Directorate · Attendance · v1.4</small></div><div class="hr"><button id="lo" class="alt hide" style="width:auto;margin:0;padding:6px 12px;color:#fff;border-color:#ffffff55">Log out</button><img class="logo" src="logo.png" alt="Ghana TVET Service logo"></div></header>
 <main>
 <!-- AUTH -->
 <section id="auth" class="card">
@@ -55,6 +55,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:7px 6px;b
  </section>
  <section id="t-rec" class="hide"><div class="card"><h2>Records</h2>
   <div class="row"><div><label>From</label><input type="date" id="rf"></div><div><label>To</label><input type="date" id="rt"></div></div>
+  <div class="row" style="margin-top:4px"><div><label>View</label><select id="rv"><option value="sum">Daily summary</option><option value="all">All entries</option></select></div><div><label>Late after</label><input type="time" id="late" value="08:00"></div></div>
   <div class="row" style="margin-top:12px"><button id="rl">Show</button><button id="rx" class="alt" style="margin-top:0">Export CSV</button></div>
   <div class="tbl" style="margin-top:10px"><table id="rtab"></table></div></div></section>
  <section id="t-adm" class="hide">
@@ -137,12 +138,37 @@ async function q(from,to,mine){
  return s.docs.map(d=>d.data()).filter(x=>x.date>=from&&x.date<=to).sort((a,b)=>(b.at?.seconds||0)-(a.at?.seconds||0))}
 async function today(){const d=day(new Date()),rows=await q(d,d,true);
  $('today').innerHTML='<tr><th>Type</th><th>Time</th><th>Place</th></tr>'+(rows.map(r=>`<tr><td>${r.type==='in'?'In':'Out'}</td><td>${fmt(r.at)}</td><td>${esc(r.locationName)}</td></tr>`).join('')||'<tr><td colspan=3>No records yet today.</td></tr>')}
-let last=[];
-$('rl').onclick=async()=>{const f=$('rf').value||day(new Date()),t=$('rt').value||f;last=await q(f,t);
- $('rtab').innerHTML='<tr><th>Staff</th><th>Type</th><th>Time</th><th>Place</th></tr>'+(last.map(r=>`<tr><td>${esc(r.name)}<br><small>${esc(r.position)}</small></td><td>${r.type}</td><td>${fmt(r.at)}</td><td>${esc(r.locationName)}</td></tr>`).join('')||'<tr><td colspan=4>No records for these dates.</td></tr>')};
-$('rx').onclick=()=>{if(!last.length)return;const h='Name,Position,Type,Time,Location,Lat,Lng,Accuracy(m)',c=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
- const t=[h,...last.map(r=>[r.name,r.position,r.type,fmt(r.at),r.locationName,r.lat,r.lng,r.accuracy].map(c).join(','))].join('\n');
- const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='attendance.csv';a.click()};
+let last=[],csvD={head:[],rows:[]};
+const sec=r=>r&&r.at?r.at.seconds:0;
+const tm=r=>r&&r.at?r.at.toDate().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:true}):'–';
+const hrs=m=>m==null?'–':Math.floor(m/60)+'h '+String(Math.round(m%60)).padStart(2,'0')+'m';
+try{$('late').value=localStorage.getItem('lateAfter')||'08:00'}catch(e){}
+$('late').onchange=()=>{try{localStorage.setItem('lateAfter',$('late').value)}catch(e){};render()};
+const t0=new Date();$('rt').value=day(t0);$('rf').value=day(new Date(t0-6*864e5));
+function summarise(rows,late){
+ const g={};rows.forEach(r=>{(g[r.uid+'|'+r.date]=g[r.uid+'|'+r.date]||[]).push(r)});
+ const [lh,lm]=(late||'08:00').split(':').map(Number);
+ return Object.values(g).map(a=>{a.sort((x,y)=>sec(x)-sec(y));
+  const ins=a.filter(x=>x.type==='in'),outs=a.filter(x=>x.type==='out'),fi=ins[0],lo=outs[outs.length-1];
+  const mins=fi&&lo&&sec(lo)>sec(fi)?(sec(lo)-sec(fi))/60:null;
+  let st='No sign-in';
+  if(fi){const d=fi.at.toDate();st=(d.getHours()*60+d.getMinutes()>lh*60+lm?'Late':'On time')+(lo?'':' (still in)')}
+  return{date:a[0].date,name:a[0].name,position:a[0].position,fi,lo,mins,st,loc:(fi||a[0]).locationName}})
+ .sort((x,y)=>y.date.localeCompare(x.date)||String(x.name).localeCompare(String(y.name)))}
+function render(){
+ if(!last.length&&!$('rtab').dataset.ran)return;
+ if($('rv').value==='sum'){
+  const r=summarise(last,$('late').value);
+  csvD={head:['Date','Name','Position','Location','First in','Last out','Hours','Status'],rows:r.map(x=>[x.date,x.name,x.position,x.loc,tm(x.fi),tm(x.lo),hrs(x.mins),x.st])};
+  $('rtab').innerHTML='<tr><th>Date</th><th>Staff</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr>'+(r.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.name)}<br><small>${esc(x.position)}</small></td><td>${tm(x.fi)}</td><td>${tm(x.lo)}</td><td>${hrs(x.mins)}</td><td style="color:${x.st.startsWith('Late')?'#e0645a':'#5fd08a'}">${x.st}</td></tr>`).join('')||'<tr><td colspan=6>No records for these dates.</td></tr>');
+ }else{
+  csvD={head:['Name','Position','Type','Time','Location','Lat','Lng','Accuracy(m)'],rows:last.map(r=>[r.name,r.position,r.type,fmt(r.at),r.locationName,r.lat,r.lng,r.accuracy])};
+  $('rtab').innerHTML='<tr><th>Staff</th><th>Type</th><th>Time</th><th>Place</th></tr>'+(last.map(r=>`<tr><td>${esc(r.name)}<br><small>${esc(r.position)}</small></td><td>${r.type}</td><td>${fmt(r.at)}</td><td>${esc(r.locationName)}</td></tr>`).join('')||'<tr><td colspan=4>No records for these dates.</td></tr>')}}
+$('rl').onclick=async()=>{const f=$('rf').value||day(new Date()),t=$('rt').value||f;$('rtab').dataset.ran=1;try{last=await q(f,t);render()}catch(e){$('rtab').innerHTML='<tr><td>Could not load records. Check your connection.</td></tr>'}};
+$('rv').onchange=render;
+$('rx').onclick=()=>{if(!csvD.rows.length)return;const c=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+ const t=[csvD.head.map(c).join(','),...csvD.rows.map(r=>r.map(c).join(','))].join('\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='attendance-'+$('rv').value+'.csv';a.click()};
 
 /* ---------- admin ---------- */
 $('lu').onclick=()=>pos?($('la').value=pos.latitude.toFixed(6),$('lg').value=pos.longitude.toFixed(6)):alert('Waiting for GPS.');

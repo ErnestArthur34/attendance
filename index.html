@@ -32,8 +32,13 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:7px 6px;b
 .tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}.tabs button{margin:0;width:auto;padding:8px 14px;background:#12362b;color:#fff;border:1px solid #3d6b5a}.tabs button.on{background:#e8b32a;color:#0f3d2e;border-color:#e8b32a}
 .msg{padding:10px;border-radius:10px;margin-top:10px;font-size:13px;background:#fff3d6;color:#5a4300}.msg.bad{background:#fde3e0;color:#7a1b13}.msg.good{background:#dff3e6;color:#12532d}
 .hide{display:none}.tbl{overflow-x:auto}@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+.chips{display:flex;gap:6px;margin:10px 0 0;overflow-x:auto}.chips button{margin:0;width:auto;padding:6px 12px;background:#12362b;color:#fff;border:1px solid #3d6b5a;font-size:13px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:12px;color:#fff;text-align:center}.modal.hide{display:none}
+.modal .row{width:100%;max-width:360px}a.ph{text-decoration:none;font-size:16px;margin-left:4px}
 </style></head><body>
-<header><div><b>Ghana TVET Service</b><small>Central Regional Directorate · Attendance · v1.7</small></div><div class="hr"><button id="lo" class="alt hide" style="width:auto;margin:0;padding:6px 12px;color:#fff;border-color:#ffffff55">Log out</button><img class="logo" src="logo.png" alt="Ghana TVET Service logo"></div></header>
+<header><div><b>Ghana TVET Service</b><small>Central Regional Directorate · Attendance · v2.0</small></div><div class="hr"><button id="lo" class="alt hide" style="width:auto;margin:0;padding:6px 12px;color:#fff;border-color:#ffffff55">Log out</button><img class="logo" src="logo.png" alt="Ghana TVET Service logo"></div></header>
+<div id="cam" class="modal hide"><div style="font-weight:600">Take a selfie to continue</div><video id="vid" playsinline muted style="width:100%;max-width:360px;border-radius:14px;background:#000;transform:scaleX(-1)"></video><div class="row"><button id="cc" class="alt">Cancel</button><button id="cs">Capture</button></div></div>
+<div id="pv" class="modal hide"><div id="pvm"></div><img id="pvi" alt="Selfie" style="max-width:100%;max-height:65vh;border-radius:12px"><button id="pvc" style="max-width:360px">Close</button></div>
 <main>
 <!-- AUTH -->
 <section id="auth" class="card">
@@ -51,10 +56,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:7px 6px;b
    <div class="ring" id="ring"><strong id="rs">Locating…</strong><span id="rd"></span></div>
    <div class="row"><button id="bin" class="btn-in" disabled>Sign in</button><button id="bout" class="btn-out" disabled>Sign out</button></div>
    <div id="mm"></div></div>
-  <div class="card"><h2>Today</h2><div class="tbl"><table id="today"></table></div></div>
+  <div class="card"><h2>My attendance</h2><div class="tbl"><table id="today"></table></div><button id="more" class="alt">Show earlier days</button></div>
  </section>
  <section id="t-rec" class="hide"><div class="card"><h2>Records</h2>
   <div class="row"><div><label>From</label><input type="date" id="rf"></div><div><label>To</label><input type="date" id="rt"></div></div>
+  <div class="chips"><button data-d="0">Today</button><button data-d="6">Last 7 days</button><button data-d="29">Last 30 days</button></div>
+  <label>Search</label><input id="rq" type="search" placeholder="Staff name, position, place, Late, or a date like 2026-10-07"><div id="rc" style="color:var(--mut);font-size:12px;margin-top:6px"></div>
   <div class="row" style="margin-top:4px"><div><label>View</label><select id="rv"><option value="sum">Daily summary</option><option value="all">All entries</option></select></div><div><label>Late after</label><input type="time" id="late" value="08:00"></div></div>
   <div class="row" style="margin-top:12px"><button id="rl">Show</button><button id="rx" class="alt" style="margin-top:0">Export CSV</button></div>
   <div class="tbl" style="margin-top:10px"><table id="rtab"></table></div>
@@ -76,6 +83,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:7px 6px;b
 firebase.initializeApp({apiKey:"AIzaSyBEmsqpXTTlc-WfYjYrEnD0NxCNFyMWtCo",authDomain:"attendance-bb993.firebaseapp.com",projectId:"attendance-bb993",storageBucket:"attendance-bb993.firebasestorage.app",messagingSenderId:"17576441287",appId:"1:17576441287:web:9100d5286f0ac0daf2d5e2"});
 const auth=firebase.auth(),db=firebase.firestore(),TS=firebase.firestore.FieldValue.serverTimestamp;
 const $=i=>document.getElementById(i),MAXACC=60;
+const DEV=(()=>{try{let d=localStorage.getItem('atds_dev');if(!d){d=(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));localStorage.setItem('atds_dev',d)}return d}catch(e){return 'nodev-'+Math.random().toString(36).slice(2)}})();
 let me=null,locs=[],pos=null,near=null,reg=false,geoOk=false,st={in:false,out:false};
 const mail=async u=>{const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(u.trim().toLowerCase()));return [...new Uint8Array(b)].slice(0,16).map(x=>x.toString(16).padStart(2,'0')).join('')+'@atds.local'};
 const pass=p=>p+'#atds-2026'; // Firebase needs 6+ chars; this lets people use any password length
@@ -95,15 +103,19 @@ $('go').onclick=async()=>{
  const u=$('un').value,p=$('pw').value;if(!u.trim()||!p)return say('am','Enter a username and a password.','bad');const em=await mail(u),pp=pass(p);
  try{if(reg){if(!$('rn').value||!$('rp').value)return say('am','Enter your full name and select a position.','bad');
    const c=await auth.createUserWithEmailAndPassword(em,pp);
-   await db.collection('users').doc(c.user.uid).set({name:$('rn').value.trim(),position:$('rp').value.trim(),username:u.trim().toLowerCase(),role:'staff',locations:[],active:true,created:TS()});
+   await db.collection('users').doc(c.user.uid).set({name:$('rn').value.trim(),position:$('rp').value.trim(),username:u.trim().toLowerCase(),role:'staff',locations:[],active:true,deviceId:DEV,created:TS()});
   }else await auth.signInWithEmailAndPassword(em,pp);
  }catch(e){say('am',e.code==='auth/email-already-in-use'?'That username is taken.':'Could not log in. Check your username and password.','bad')}};
 $('lo').onclick=()=>auth.signOut();
 auth.onAuthStateChanged(async u=>{
  if(!u){me=null;$('auth').classList.remove('hide');$('app').classList.add('hide');$('lo').classList.add('hide');return}
- const s=await db.collection('users').doc(u.uid).get();me={uid:u.uid,...s.data()};
+ let s;for(let i=0;i<8;i++){s=await db.collection('users').doc(u.uid).get();if(s.exists)break;await new Promise(r=>setTimeout(r,500))}
+ me={uid:u.uid,...s.data()};
+ if(me.deviceId&&me.deviceId!==DEV){await auth.signOut();say('am','This account is registered to another phone. Ask an admin to reset your phone, then log in again.','bad');return}
+ if(!me.deviceId){try{await db.collection('users').doc(u.uid).update({deviceId:DEV});me.deviceId=DEV}catch(e){}}
  $('auth').classList.add('hide');$('app').classList.remove('hide');$('lo').classList.remove('hide');
  document.querySelectorAll('.adm').forEach(e=>e.classList.toggle('hide',me.role!=='admin'));
+ const canExp=['admin','supervisor'].includes(me.role);$('rx').classList.toggle('hide',!canExp);$('rl').parentElement.style.gridTemplateColumns=canExp?'1fr 1fr':'1fr';
  await loadLocs();watch();today();
 });
 
@@ -111,7 +123,7 @@ auth.onAuthStateChanged(async u=>{
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
  document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));
  ['me','rec','adm'].forEach(t=>$('t-'+t).classList.toggle('hide',t!==b.dataset.t));
- if(b.dataset.t==='adm')admin()});
+ if(b.dataset.t==='adm')admin();if(b.dataset.t==='rec'&&!$('rtab').dataset.ran)$('rl').onclick()});
 
 /* ---------- clock ---------- */
 setInterval(()=>{const n=now();$('clk').textContent=n.toLocaleTimeString('en-GB',{timeZone:'Africa/Accra',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true});$('dt').textContent=n.toLocaleDateString('en-GB',{timeZone:'Africa/Accra',weekday:'long',day:'numeric',month:'long',year:'numeric'})},500);
@@ -131,11 +143,24 @@ function check(){
  near?ui('in',r.l.name,`${Math.round(r.d)} m from centre`,true):ui('out','Outside',`${Math.round(r.d)} m from ${r.l.name} (limit ${r.l.radius} m)`)}
 function ui(c,a,b,ok){$('ring').className='ring '+c;$('rs').textContent=a;$('rd').textContent=b;geoOk=!!ok;setBtns()}
 function setBtns(){$('bin').disabled=!(geoOk&&!st.in);$('bout').disabled=!(geoOk&&st.in&&!st.out)}
+const SF={timeZone:'Africa/Accra',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true};
+function selfie(lab){return new Promise(async(res,rej)=>{
+ const m=$('cam'),v=$('vid');let stream;
+ const done=(f,x)=>{try{stream&&stream.getTracks().forEach(t=>t.stop())}catch(e){}v.srcObject=null;m.classList.add('hide');f(x)};
+ try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false})}catch(e){return rej(new Error('camera'))}
+ v.srcObject=stream;m.classList.remove('hide');try{await v.play()}catch(e){}
+ $('cc').onclick=()=>done(rej,new Error('cancel'));
+ $('cs').onclick=()=>{if(!v.videoWidth)return;const W=280,H=Math.round(W*v.videoHeight/v.videoWidth),c=document.createElement('canvas');c.width=W;c.height=H+30;const x=c.getContext('2d');x.drawImage(v,0,0,W,H);x.fillStyle='#000';x.fillRect(0,H,W,30);x.fillStyle='#fff';x.font='10px sans-serif';const l=lab();x.fillText(l[0],4,H+12);x.fillText(l[1],4,H+25);done(res,c.toDataURL('image/jpeg',.6))}})}
 async function mark(type){
  if(!near||!pos)return;
  $('bin').disabled=$('bout').disabled=true;
- try{await db.collection('attendance').doc(me.uid+'_'+day(now())+'_'+type).set({uid:me.uid,name:me.name,position:me.position,type,locationId:near.id,locationName:near.name,lat:pos.latitude,lng:pos.longitude,accuracy:Math.round(pos.accuracy),date:day(now()),at:TS()});
-  today()}catch(e){say('mm','Could not save. You may have already signed '+type+' today, or there is no connection.','bad');today()}}
+ let photo;
+ try{photo=await selfie(()=>[now().toLocaleString('en-GB',SF),me.name+' | '+type.toUpperCase()+' | '+near.name])}
+ catch(e){setBtns();return say('mm',e.message==='cancel'?'Selfie cancelled. Nothing was saved.':'The camera is needed for the selfie. Allow camera access for this app and try again.','bad')}
+ try{const id=me.uid+'_'+day(now())+'_'+type,b=db.batch();
+  b.set(db.collection('photos').doc(id),{uid:me.uid,data:photo,created:TS()});
+  b.set(db.collection('attendance').doc(id),{uid:me.uid,name:me.name,position:me.position,type,locationId:near.id,locationName:near.name,lat:pos.latitude,lng:pos.longitude,accuracy:Math.round(pos.accuracy),date:day(now()),deviceId:DEV,photoId:id,at:TS()});
+  await b.commit();today()}catch(e){say('mm','Could not save. You may have already signed '+type+' today, or there is no connection.','bad');today()}}
 $('bin').onclick=()=>mark('in');$('bout').onclick=()=>mark('out');
 
 /* ---------- records ---------- */
@@ -143,12 +168,18 @@ async function q(from,to,mine){
  let r=db.collection('attendance'),own=mine||me.role==='staff';
  r=own?r.where('uid','==',me.uid):r.where('date','>=',from).where('date','<=',to);
  const s=await r.get();
- return s.docs.map(d=>d.data()).filter(x=>x.date>=from&&x.date<=to).sort((a,b)=>(b.at?.seconds||0)-(a.at?.seconds||0))}
-async function today(){const d=day(now()),rows=await q(d,d,true);st={in:rows.some(r=>r.type==='in'),out:rows.some(r=>r.type==='out')};setBtns();
+ return s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.date>=from&&x.date<=to).sort((a,b)=>(b.at?.seconds||0)-(a.at?.seconds||0))}
+let histDays=30;
+async function today(){const d=day(now()),from=day(new Date(now()-histDays*864e5)),all=await q(from,d,true),rows=all.filter(r=>r.date===d);
+ st={in:rows.some(r=>r.type==='in'),out:rows.some(r=>r.type==='out')};setBtns();
  const ri=rows.find(r=>r.type==='in'),ro=rows.find(r=>r.type==='out');
  if(st.out)say('mm','Signed in at '+tms(ri)+', signed out at '+tms(ro)+' (server time). Done for today.','good');else if(st.in)say('mm','Signed in at '+tms(ri)+' (server time). Sign out when you leave.','good');
- $('today').innerHTML='<tr><th>Type</th><th>Time</th><th>Place</th></tr>'+(rows.map(r=>`<tr><td>${r.type==='in'?'In':'Out'}</td><td>${fmt(r.at)}</td><td>${esc(r.locationName)}</td></tr>`).join('')||'<tr><td colspan=3>No records yet today.</td></tr>')}
+ const sm=summarise(all,'08:00');
+ $('today').innerHTML='<tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th></tr>'+(sm.map(x=>`<tr><td>${esc(x.date)}</td><td>${tm(x.fi)}${ph(x.fi)}</td><td>${tm(x.lo)}${ph(x.lo)}</td><td>${hrs(x.mins)}</td></tr>`).join('')||'<tr><td colspan=4>No attendance records yet.</td></tr>');
+ $('more').textContent='Show earlier days (now showing the last '+histDays+' days)'}
+$('more').onclick=()=>{histDays+=30;today()};
 let last=[],csvD={head:[],rows:[]};
+const ph=r=>r&&r.id?`<a href="#" class="ph" data-p="${r.id}" aria-label="View selfie">📷</a>`:'';
 const sec=r=>r&&r.at?r.at.seconds:0;
 const tm=r=>r&&r.at?r.at.toDate().toLocaleTimeString('en-GB',{timeZone:'Africa/Accra',hour:'2-digit',minute:'2-digit',hour12:true}):'–';
 const hrs=m=>m==null?'–':Math.floor(m/60)+'h '+String(Math.round(m%60)).padStart(2,'0')+'m';
@@ -168,19 +199,22 @@ function summarise(rows,late){
 function counts(r){const g={};r.forEach(x=>{const o=g[x.uid]=g[x.uid]||{name:x.name,position:x.position,d:0,l:0,m:0};if(x.fi)o.d++;if(x.st.startsWith('Late'))o.l++;o.m+=x.mins||0});return Object.values(g).sort((a,b)=>String(a.name).localeCompare(String(b.name)))}
 function render(){
  if(!last.length&&!$('rtab').dataset.ran)return;
- const sm=summarise(last,$('late').value),cn=counts(sm);
- $('ctab').innerHTML='<tr><th>Staff</th><th>Days present</th><th>Late</th><th>Hours</th></tr>'+(cn.map(o=>`<tr><td>${esc(o.name)}<br><small>${esc(o.position)}</small></td><td>${o.d}</td><td>${o.l}</td><td>${hrs(o.m)}</td></tr>`).join('')||'<tr><td colspan=4>No records for these dates.</td></tr>');
+ const hit=x=>{const w=($('rq').value||'').toLowerCase().split(/\s+/).filter(Boolean),h=x.join(' ').toLowerCase();return w.every(k=>h.includes(k))};
+ const sm=summarise(last,$('late').value).filter(x=>hit([x.date,x.name,x.position,x.loc,x.st])),lf=last.filter(x=>hit([x.date,x.name,x.position,x.type,x.locationName])),cn=counts(sm);
+ $('rc').textContent=($('rv').value==='sum'?sm.length+' staff-day(s)':lf.length+' entr'+(lf.length===1?'y':'ies'))+' found';
+ $('ctab').innerHTML='<tr><th>Staff</th><th>Days present</th><th>Late</th><th>Hours</th></tr>'+(cn.map(o=>`<tr><td>${esc(o.name)}<br><small>${esc(o.position)}</small></td><td>${o.d}</td><td>${o.l}</td><td>${hrs(o.m)}</td></tr>`).join('')||'<tr><td colspan=4>No records match.</td></tr>');
  const cnRows=[[],['Staff','Days present','Late','Hours'],...cn.map(o=>[o.name,o.d,o.l,hrs(o.m)])];
  if($('rv').value==='sum'){
   const r=sm;
   csvD={head:['Date','Name','Position','Location','First in','Last out','Hours','Status'],rows:r.map(x=>[x.date,x.name,x.position,x.loc,tm(x.fi),tm(x.lo),hrs(x.mins),x.st]).concat(cnRows)};
-  $('rtab').innerHTML='<tr><th>Date</th><th>Staff</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr>'+(r.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.name)}<br><small>${esc(x.position)}</small></td><td>${tm(x.fi)}</td><td>${tm(x.lo)}</td><td>${hrs(x.mins)}</td><td style="color:${x.st.startsWith('Late')?'#e0645a':'#5fd08a'}">${x.st}</td></tr>`).join('')||'<tr><td colspan=6>No records for these dates.</td></tr>');
+  $('rtab').innerHTML='<tr><th>Date</th><th>Staff</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr>'+(r.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.name)}<br><small>${esc(x.position)}</small></td><td>${tm(x.fi)}${ph(x.fi)}</td><td>${tm(x.lo)}${ph(x.lo)}</td><td>${hrs(x.mins)}</td><td style="color:${x.st.startsWith('Late')?'#e0645a':'#5fd08a'}">${x.st}</td></tr>`).join('')||'<tr><td colspan=6>No records match.</td></tr>');
  }else{
-  csvD={head:['Name','Position','Type','Time','Location','Lat','Lng','Accuracy(m)'],rows:last.map(r=>[r.name,r.position,r.type,fmt(r.at),r.locationName,r.lat,r.lng,r.accuracy])};
-  $('rtab').innerHTML='<tr><th>Staff</th><th>Type</th><th>Time</th><th>Place</th></tr>'+(last.map(r=>`<tr><td>${esc(r.name)}<br><small>${esc(r.position)}</small></td><td>${r.type}</td><td>${fmt(r.at)}</td><td>${esc(r.locationName)}</td></tr>`).join('')||'<tr><td colspan=4>No records for these dates.</td></tr>')}}
+  csvD={head:['Name','Position','Type','Time','Location','Lat','Lng','Accuracy(m)'],rows:lf.map(r=>[r.name,r.position,r.type,fmt(r.at),r.locationName,r.lat,r.lng,r.accuracy])};
+  $('rtab').innerHTML='<tr><th>Staff</th><th>Type</th><th>Time</th><th>Place</th></tr>'+(lf.map(r=>`<tr><td>${esc(r.name)}<br><small>${esc(r.position)}</small></td><td>${r.type}</td><td>${fmt(r.at)}${ph(r)}</td><td>${esc(r.locationName)}</td></tr>`).join('')||'<tr><td colspan=4>No records match.</td></tr>')}}
 $('rl').onclick=async()=>{const f=$('rf').value||day(now()),t=$('rt').value||f;$('rtab').dataset.ran=1;try{last=await q(f,t);render()}catch(e){$('rtab').innerHTML='<tr><td>Could not load records. Check your connection.</td></tr>'}};
-$('rv').onchange=render;
-$('rx').onclick=()=>{if(!csvD.rows.length)return;const c=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+$('rv').onchange=render;$('rq').oninput=render;
+document.querySelectorAll('.chips button').forEach(c=>c.onclick=()=>{$('rt').value=day(now());$('rf').value=day(new Date(now()-(+c.dataset.d)*864e5));$('rl').onclick()});
+$('rx').onclick=()=>{if(!me||!['admin','supervisor'].includes(me.role)||!csvD.rows.length)return;const c=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
  const t=[csvD.head.map(c).join(','),...csvD.rows.map(r=>r.map(c).join(','))].join('\n');
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='attendance-'+$('rv').value+'.csv';a.click()};
 
@@ -192,10 +226,16 @@ async function admin(){
  $('ltab').innerHTML='<tr><th>Location</th><th>Radius</th><th></th></tr>'+locs.map(l=>`<tr><td>${esc(l.name)}</td><td>${l.radius} m</td><td><a href="#" data-d="${l.id}">Remove</a></td></tr>`).join('');
  $('ltab').querySelectorAll('[data-d]').forEach(a=>a.onclick=async e=>{e.preventDefault();if(confirm('Remove this location?')){await db.collection('locations').doc(a.dataset.d).update({active:false});await loadLocs();admin()}});
  const s=await db.collection('users').get();
- $('stab').innerHTML='<tr><th>Staff</th><th>Role</th><th>Locations</th></tr>'+s.docs.map(d=>{const u=d.data();return`<tr><td>${esc(u.name)}<br><small>${esc(u.position)}</small></td>
+ $('stab').innerHTML='<tr><th>Staff</th><th>Role</th><th>Locations</th><th>Phone</th></tr>'+s.docs.map(d=>{const u=d.data();return`<tr><td>${esc(u.name)}<br><small>${esc(u.position)}</small></td>
  <td><select data-r="${d.id}"><option${u.role==='staff'?' selected':''}>staff</option><option${u.role==='supervisor'?' selected':''}>supervisor</option><option${u.role==='admin'?' selected':''}>admin</option></select></td>
- <td><select multiple data-l="${d.id}" size="3">${locs.map(l=>`<option value="${l.id}"${(u.locations||[]).includes(l.id)?' selected':''}>${esc(l.name)}</option>`).join('')}</select></td></tr>`}).join('');
+ <td><select multiple data-l="${d.id}" size="3">${locs.map(l=>`<option value="${l.id}"${(u.locations||[]).includes(l.id)?' selected':''}>${esc(l.name)}</option>`).join('')}</select></td>
+ <td>${u.deviceId?`<a href="#" data-x="${d.id}">Reset</a>`:'Not set'}</td></tr>`}).join('');
+ $('stab').querySelectorAll('[data-x]').forEach(a=>a.onclick=async e=>{e.preventDefault();if(confirm('Reset this staff member\'s phone? They can then log in from a new phone.')){await db.collection('users').doc(a.dataset.x).update({deviceId:firebase.firestore.FieldValue.delete()});admin()}});
  $('stab').querySelectorAll('[data-r]').forEach(x=>x.onchange=()=>db.collection('users').doc(x.dataset.r).update({role:x.value}));
  $('stab').querySelectorAll('[data-l]').forEach(x=>x.onchange=()=>db.collection('users').doc(x.dataset.l).update({locations:[...x.selectedOptions].map(o=>o.value)}))}
+document.addEventListener('click',async e=>{const a=e.target.closest&&e.target.closest('[data-p]');if(!a)return;e.preventDefault();
+ $('pvi').removeAttribute('src');$('pvm').textContent='Loading…';$('pv').classList.remove('hide');
+ try{const d=await db.collection('photos').doc(a.dataset.p).get();if(d.exists){$('pvi').src=d.data().data;$('pvm').textContent=''}else $('pvm').textContent='No selfie was saved for this record.'}catch(x){$('pvm').textContent='Could not load the selfie.'}});
+$('pvc').onclick=()=>$('pv').classList.add('hide');
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
 </script></body></html>
